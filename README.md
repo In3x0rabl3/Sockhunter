@@ -7,11 +7,11 @@ The tool can run continuously, score observed activity, classify roles (e.g., re
 ---
 
 ## Features
-
-**Behavior-based detection** — identifies proxy/tunnel patterns without signatures  
-**Reverse-control detection** — persistent outbound channels are tracked temporally  
-**Reverse-transport classification** — detects payload forwarding over local TCP  
-**Role assignment** — processes are labeled based on observed traffic patterns  
+|------------------------|---------|
+| **Behavior-based detection** | identifies proxy/tunnel patterns without signatures |
+**Reverse-control detection** — persistent outbound channels are tracked temporally | 
+**Reverse-transport classification** — detects payload forwarding over local TCP |
+**Role assignment** — processes are labeled based on observed traffic patterns | 
 **Outbound fan-out heuristics** — identifies multiplexing & multiple service targets  
 **Client listener detection** — detects loopback/bound SOCKS-like behavior  
 **Lateral movement hints** — flags internal connections to common lateral ports  
