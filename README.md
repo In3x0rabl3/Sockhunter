@@ -10,6 +10,7 @@ The tool can run continuously, score observed activity, classify roles (e.g., re
 | Feature                   | Meaning |
 |---------------------------|---------|
 | **Behavior-based detection** | identifies proxy/tunnel patterns without signatures |
+| **Whitelisting Processes** | | whitelist specific processes to avoid killing |
 | **Reverse-control detection** | persistent outbound channels are tracked temporally | 
 | **Reverse-transport classification** | detects payload forwarding over local TCP |
 | **Role assignment** | processes are labeled based on observed traffic patterns | 
@@ -61,5 +62,5 @@ Clone & build:
 ```bash
 git clone https://github.com/youruser/proxywatch.git
 cd proxywatch
-go build ./cmd/proxywatch
+GOOS=windows GOARCH=amd64 go build -o proxywatch.exe ./cmd/proxywatch
 
