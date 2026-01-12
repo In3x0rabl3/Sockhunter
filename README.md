@@ -8,16 +8,16 @@ The tool can run continuously, score observed activity, classify roles (e.g., re
 
 ## Features
 
-✔ **Behavior-based detection** — identifies proxy/tunnel patterns without signatures  
-✔ **Reverse-control detection** — persistent outbound channels are tracked temporally  
-✔ **Reverse-transport classification** — detects payload forwarding over local TCP  
-✔ **Role assignment** — processes are labeled based on observed traffic patterns  
-✔ **Outbound fan-out heuristics** — identifies multiplexing & multiple service targets  
-✔ **Client listener detection** — detects loopback/bound SOCKS-like behavior  
-✔ **Lateral movement hints** — flags internal connections to common lateral ports  
-✔ **Kill switch (optional)** — terminate high-scoring processes automatically  
-✔ **Run once or continuous** — suitable for terminal usage, scripting, or monitoring  
-✔ **No admin installation required** — uses standard Win32 APIs + `tasklist`  
+**Behavior-based detection** — identifies proxy/tunnel patterns without signatures  
+**Reverse-control detection** — persistent outbound channels are tracked temporally  
+**Reverse-transport classification** — detects payload forwarding over local TCP  
+**Role assignment** — processes are labeled based on observed traffic patterns  
+**Outbound fan-out heuristics** — identifies multiplexing & multiple service targets  
+**Client listener detection** — detects loopback/bound SOCKS-like behavior  
+**Lateral movement hints** — flags internal connections to common lateral ports  
+**Kill switch (optional)** — terminate high-scoring processes automatically  
+**Run once or continuous** — suitable for terminal usage, scripting, or monitoring  
+**No admin installation required** — uses standard Win32 APIs + `tasklist`  
 
 ---
 
