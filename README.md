@@ -60,7 +60,7 @@ All analysis is userland and stateful across scans.
 Clone & build:
 
 ```bash
-git clone https://github.com/youruser/proxywatch.git
+git clone https://github.com/In3x0rabl3/proxywatch.git
 cd proxywatch
 GOOS=windows GOARCH=amd64 go build -o proxywatch.exe ./cmd/proxywatch
 
