@@ -1,6 +1,6 @@
 # ProxyWatch
 
-ProxyWatch is a Windows behavioral network inspection tool that identifies potential tunneling, proxying, and reverse-control patterns by correlating TCP tables and running processes. It operates without kernel drivers, ETW, or packet inspection — behavior is inferred purely from TCP state, process context, and heuristic scoring.
+ProxyWatch is a Windows behavioral network inspection tool that identifies potential tunneling, proxying, and reverse-control patterns by correlating TCP tables and running processes. It operates without kernel drivers, ETW, or packet inspection and the behavior is purely from TCP state, process context, and heuristic scoring.
 
 The tool can run continuously, score observed activity, classify roles (e.g., reverse-tunnel, proxy-listener), and optionally kill processes that exceed a configurable score threshold.
 
