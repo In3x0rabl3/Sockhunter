@@ -19,7 +19,7 @@ The tool can run continuously, score observed activity, classify roles (e.g., re
 | **Lateral movement hints** | flags internal connections to common lateral ports |  
 | **Kill switch (optional)** | terminate high-scoring processes automatically |  
 | **Run once or continuous** | suitable for terminal usage, scripting, or monitoring |  
-| **No admin installation required** | uses standard Win32 APIs + `tasklist` |  
+| **No admin installation required** | uses standard Win32 APIs |  
 
 ---
 
