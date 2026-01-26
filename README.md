@@ -62,6 +62,8 @@ Clone & build:
 ```bash
 git clone https://github.com/In3x0rabl3/proxywatch.git
 cd proxywatch/proxywatch
+go mod download golang.org/x/sys
+go get github.com/gdamore/tcell/v2
 go get proxywatch/cmd/proxywatch
 GOOS=windows GOARCH=amd64 go build -o proxywatch.exe ./cmd/proxywatch
 
