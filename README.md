@@ -1,25 +1,26 @@
 # ProxyWatch
 
-ProxyWatch is a Windows behavioral network inspection tool that identifies potential tunneling, proxying, and reverse-control patterns by correlating TCP tables and running processes. It operates without kernel drivers, ETW, or packet inspection and the behavior is purely from TCP state, process context, and heuristic scoring.
+ProxyWatch is a Windows behavioral network inspection tool that identifies potential tunneling, proxying, and reverse-control patterns by correlating TCP tables with running processes. It operates without kernel drivers, ETW, or packet inspection. All detection is based on TCP state, process context, and heuristic scoring.
 
-The tool can run continuously, score observed activity, classify roles (e.g., reverse-tunnel, proxy-listener), and optionally kill processes that exceed a configurable score threshold.
+ProxyWatch can run continuously in a TUI, classify roles (e.g., reverse-tunnel, proxy-listener), and let you manually terminate a process from the inspector.
 
 ---
 
 ## Features
-| Feature                   | Meaning |
-|---------------------------|---------|
+| Feature                       | Meaning |
+|------------------------------|---------|
 | **Behavior-based detection** | identifies proxy/tunnel patterns without signatures |
-| **Whitelist Processes** | whitelist specific processes to avoid killing |
-| **Reverse-control detection** | persistent outbound channels are tracked temporally | 
-| **Reverse-transport classification** | detects payload forwarding over local TCP |
-| **Role assignment** | processes are labeled based on observed traffic patterns | 
-| **Outbound fan-out heuristics** | identifies multiplexing & multiple service targets |  
-| **Client listener detection** | detects loopback/bound SOCKS-like behavior |  
-| **Lateral movement hints** | flags internal connections to common lateral ports |  
-| **Kill switch (optional)** | terminate high-scoring processes automatically |  
-| **Run once or continuous** | suitable for terminal usage, scripting, or monitoring |  
-| **No admin installation required** | uses standard Win32 APIs |  
+| **Reverse-control detection** | persistent outbound channels tracked over time |
+| **Reverse-transport detection** | detects local forwarding activity over loopback |
+| **Role assignment**          | processes are labeled based on observed traffic patterns |
+| **Outbound fan-out heuristics** | identifies multiplexing & multiple service targets |
+| **Client listener detection** | detects loopback/bound SOCKS-like behavior |
+| **Lateral movement hints**   | flags internal connections to common lateral ports |
+| **Short-lived connection capture** | burst sampling improves visibility of fast scans |
+| **TUI + inspector**          | interactive view with per-process details |
+| **Manual kill (inspector)**  | terminate the inspected process with one keypress |
+| **Run once or continuous**   | suitable for terminal usage, scripting, or monitoring |
+| **No admin installation required** | uses standard Win32 APIs |
 
 ---
 
@@ -27,17 +28,44 @@ The tool can run continuously, score observed activity, classify roles (e.g., re
 
 ProxyWatch assigns a best-fit role per process:
 
-| Role                   | Meaning |
-|------------------------|---------|
-| `reverse-control`      | Persistent outbound control channel (idle) |
-| `reverse-transport`    | Reverse-control + active local forwarding |
-| `reverse-tunnel`       | Multiple outbound targets, no listener |
-| `proxy-listener`       | Listener with clients + outbound forwarding |
-| `listener-with-clients`| Local clients without outbound |
+| Role                    | Meaning |
+|-------------------------|---------|
+| `reverse-control`       | Persistent outbound control channel (idle) |
+| `reverse-transport`     | Reverse-control + active local forwarding |
+| `reverse-tunnel`        | Multiple outbound targets, no listener |
+| `proxy-listener`        | Listener with clients + outbound forwarding |
+| `listener-with-clients` | Local clients without outbound |
 | `listener-with-outbound`| Listener, no clients, outbound activity |
-| `listener-only`        | Listener without traffic |
-| `outbound-only`        | Outbound activity only |
-| `no-network-activity`  | Nothing interesting |
+| `listener-only`         | Listener without traffic |
+| `outbound-only`         | Outbound activity only |
+| `no-network-activity`   | Nothing interesting |
+
+---
+
+## Usage
+
+### Interactive TUI
+```bash
+proxywatch.exe
+```
+
+Keys:
+- `UP/DOWN` to select
+- `ENTER` to inspect
+- `ESC` to return to dashboard
+- `k` to kill the inspected process
+- `q` to quit
+
+### One-shot (scriptable)
+```bash
+proxywatch.exe -once
+```
+
+### Useful flags
+- `-roles`: comma-separated list of roles to display (e.g., `reverse-proxy,reverse-control`)
+- `-interval`: refresh interval (e.g., `250ms`, `1s`)
+
+Note: there is no `-min` flag. ProxyWatch uses a built-in threshold to reduce noise.
 
 ---
 
@@ -46,9 +74,10 @@ ProxyWatch assigns a best-fit role per process:
 ProxyWatch uses:
 
 - `GetExtendedTcpTable` (IPv4/IPv6) for TCP state & PID association
-- `tasklist /V` for process info
-- timestamped tracking of unique outbound connections for control-channel inference
+- Toolhelp process snapshot + Win32 APIs for process metadata
+- timestamped tracking of outbound connections for control-channel inference
 - heuristic scoring + role classification
+- burst sampling per refresh to capture short-lived connections
 
 No packets are captured. No kernel components are required.  
 All analysis is userland and stateful across scans.
@@ -62,8 +91,14 @@ Clone & build:
 ```bash
 git clone https://github.com/In3x0rabl3/proxywatch.git
 cd proxywatch/proxywatch
-go mod download golang.org/x/sys
+go mod download
 go get github.com/gdamore/tcell/v2
-go get proxywatch/cmd/proxywatch
 GOOS=windows GOARCH=amd64 go build -o proxywatch.exe ./cmd/proxywatch
+```
 
+---
+
+## Notes
+
+- Terminating processes may require elevated privileges depending on target.
+- Lateral ports are used as heuristic hints (SMB, RDP, WinRM, LDAP, MSSQL, SSH).
