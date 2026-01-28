@@ -92,5 +92,9 @@ func (app *AppState) DrawInspector() {
 		}
 	}
 
-	PutString(s, 0, h-1, "ESC return | q quit")
+	if app.LastError != "" && h >= 2 {
+		PutString(s, 0, h-2, TruncateToWidth("Status: "+app.LastError, w))
+	}
+
+	PutString(s, 0, h-1, "ESC return | k kill | q quit")
 }

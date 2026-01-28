@@ -20,3 +20,7 @@ type Snapshot struct {
 func Collect() (*Snapshot, error) {
 	return nil, errors.New("telemetry collection is only supported on Windows")
 }
+
+func KillProcess(pid int) error {
+	return errors.New("process termination is only supported on Windows")
+}

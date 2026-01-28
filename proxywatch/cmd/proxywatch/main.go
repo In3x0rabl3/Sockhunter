@@ -79,7 +79,6 @@ func (s *scanner) Refresh(app *ui.AppState) {
 /* ---------------- main ---------------- */
 
 func main() {
-	minScore := flag.Int("min", 15, "Minimum score to display a candidate")
 	once := flag.Bool("once", false, "Run one scan and exit")
 	roles := flag.String("roles", "", "Comma-separated list of roles to display")
 	interval := flag.Duration("interval", 1*time.Second, "Refresh interval (e.g. 250ms, 1s)")
@@ -87,6 +86,7 @@ func main() {
 	flag.Parse()
 
 	roleFilter := parseRoleFilter(*roles)
+	minScore := 0
 
 	// -------- one-shot mode --------
 	if *once {
@@ -96,7 +96,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		cands := classifier.Classify(snap, *minScore, roleFilter)
+		cands := classifier.Classify(snap, minScore, roleFilter)
 
 		// intentionally minimal, machine-friendly output
 		for _, c := range cands {
@@ -115,13 +115,13 @@ func main() {
 
 	// -------- interactive TUI --------
 	app := &ui.AppState{
-		MinScore:   *minScore,
+		MinScore:   minScore,
 		RoleFilter: roleFilter,
 		RefreshInt: *interval,
 	}
 
 	sc := &scanner{
-		minScore:   *minScore,
+		minScore:   minScore,
 		roleFilter: roleFilter,
 	}
 

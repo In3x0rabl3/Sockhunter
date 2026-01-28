@@ -23,7 +23,7 @@ func (app *AppState) DrawDashboard() {
 	)
 
 	if app.LastError != "" {
-		PutString(s, 0, 3, TruncateToWidth("Error: "+app.LastError, w))
+		PutString(s, 0, 3, TruncateToWidth("Status: "+app.LastError, w))
 	}
 
 	y := 5

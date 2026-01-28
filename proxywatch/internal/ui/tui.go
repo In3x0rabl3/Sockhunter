@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"strconv"
 	"time"
+
+	"proxywatch/internal/telemetry"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -91,6 +94,21 @@ func Run(app *AppState, scanner Scanner) error {
 					}
 					if tev.Rune() == 'q' {
 						return nil
+					}
+					if tev.Rune() == 'k' || tev.Rune() == 'K' {
+						pid := app.InspectPID
+						idx := app.FindIndexByPID(pid)
+						if idx == -1 {
+							app.LastError = "Process no longer present"
+							break
+						}
+
+						if err := telemetry.KillProcess(pid); err != nil {
+							app.LastError = "Kill failed: " + err.Error()
+						} else {
+							app.LastError = "Killed PID " + strconv.Itoa(pid) + " (" + app.Candidates[idx].Proc.Name + ")"
+							app.Killed[pid] = true
+						}
 					}
 				}
 			}
