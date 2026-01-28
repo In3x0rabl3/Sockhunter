@@ -47,6 +47,17 @@ var (
 	outboundOnlyExternalCap   = 30
 	procHistoryByPID          = make(map[int]*procHistory)
 	lastHistoryCleanup        time.Time
+	benignControlPorts        = map[int]bool{
+		53:   true,
+		80:   true,
+		443:  true,
+		8080: true,
+		8443: true,
+		8000: true,
+		8001: true,
+		8008: true,
+		8888: true,
+	}
 )
 
 func ScoreCandidate(c *shared.Candidate) {
@@ -137,27 +148,32 @@ func ScoreCandidate(c *shared.Candidate) {
 	// ---------------- Reverse control detection ----------------
 	reverseControl := false
 	if !hasListener && outTotal == 1 && len(distinctTargets) == 1 && controlConn != nil {
-		reverseControl = true
-
-		localTransport, localCount := localTransportActivity(c.Conns)
-		if localTransport {
-			scoreVal = 60 + min((controlSecs/10)*5, 40)
-			if localCount > 0 {
-				scoreVal += 20
-				if localCount > 3 {
+		if isLikelyBenignControlPort(controlConn.RemotePort) && !internalLateral && outInternal == 0 {
+			reverseControl = false
+		} else {
+			reverseControl = true
+		}
+		if reverseControl {
+			localTransport, localCount := localTransportActivity(c.Conns)
+			if localTransport {
+				scoreVal = 60 + min((controlSecs/10)*5, 40)
+				if localCount > 0 {
 					scoreVal += 20
+					if localCount > 3 {
+						scoreVal += 20
+					}
 				}
-			}
 
-			c.Score = scoreVal
-			c.Role = "reverse-transport"
-			c.ActiveProxying = true
-			c.ControlChannel = controlConn
-			c.ControlDurationSeconds = controlSecs
-			c.Reasons = []string{
-				"Persistent reverse control channel with local transport activity",
+				c.Score = scoreVal
+				c.Role = "reverse-transport"
+				c.ActiveProxying = true
+				c.ControlChannel = controlConn
+				c.ControlDurationSeconds = controlSecs
+				c.Reasons = []string{
+					"Persistent reverse control channel with local transport activity",
+				}
+				return
 			}
-			return
 		}
 	}
 
@@ -610,6 +626,10 @@ func isActiveConnState(state string) bool {
 	default:
 		return false
 	}
+}
+
+func isLikelyBenignControlPort(port int) bool {
+	return benignControlPorts[port]
 }
 
 func min(a, b int) int {

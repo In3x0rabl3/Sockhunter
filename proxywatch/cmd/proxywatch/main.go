@@ -86,7 +86,7 @@ func main() {
 	flag.Parse()
 
 	roleFilter := parseRoleFilter(*roles)
-	minScore := 0
+	minScore := 15
 
 	// -------- one-shot mode --------
 	if *once {
