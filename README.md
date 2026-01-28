@@ -64,9 +64,6 @@ proxywatch.exe -once
 ### Useful flags
 - `-roles`: comma-separated list of roles to display (e.g., `reverse-proxy,reverse-control`)
 - `-interval`: refresh interval (e.g., `250ms`, `1s`)
-
-Note: there is no `-min` flag. ProxyWatch uses a built-in threshold to reduce noise.
-
 ---
 
 ## How It Works (High-Level)
