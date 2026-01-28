@@ -5,6 +5,7 @@ package telemetry
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -17,6 +18,7 @@ import (
 var (
 	modKernel32              = windows.NewLazySystemDLL("kernel32.dll")
 	procGetProcessTimes      = modKernel32.NewProc("GetProcessTimes")
+	procGetProcessIoCounters = modKernel32.NewProc("GetProcessIoCounters")
 	procProcessIdToSessionId = modKernel32.NewProc("ProcessIdToSessionId")
 	modPsapi                 = windows.NewLazySystemDLL("psapi.dll")
 	procGetProcessMemoryInfo = modPsapi.NewProc("GetProcessMemoryInfo")
@@ -49,16 +51,24 @@ func GetProcessInfoMap() (map[int]*shared.ProcessInfo, error) {
 			name := strings.ToLower(strings.TrimSpace(windows.UTF16ToString(entry.ExeFile[:])))
 
 			pi := &shared.ProcessInfo{
-				Pid:    pid,
-				Name:   name,
-				Status: "Running",
+				Pid:       pid,
+				ParentPid: int(entry.ParentProcessID),
+				Name:      name,
+				Status:    "Running",
 			}
 
 			const access = windows.PROCESS_QUERY_INFORMATION | windows.PROCESS_VM_READ
-			if h, err := windows.OpenProcess(access, false, uint32(pid)); err == nil {
+			h, err := windows.OpenProcess(access, false, uint32(pid))
+			if err != nil {
+				h, err = windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+			}
+			if err == nil {
 				fillTimes(h, pi)
 				fillMemory(h, pi)
+				fillIOCounters(h, pi)
 				fillUser(h, pi)
+				fillExePath(h, pi)
+				fillIntegrity(h, pi)
 				windows.CloseHandle(h)
 			}
 
@@ -104,6 +114,18 @@ func fillMemory(h windows.Handle, pi *shared.ProcessInfo) {
 	}
 }
 
+func fillIOCounters(h windows.Handle, pi *shared.ProcessInfo) {
+	var io windows.IO_COUNTERS
+	if r, _, _ := procGetProcessIoCounters.Call(
+		uintptr(h),
+		uintptr(unsafe.Pointer(&io)),
+	); r != 0 {
+		pi.IOReadBytes = io.ReadTransferCount
+		pi.IOWriteBytes = io.WriteTransferCount
+		pi.IOOtherBytes = io.OtherTransferCount
+	}
+}
+
 func fillSession(pi *shared.ProcessInfo) {
 	var sid uint32
 	if r, _, _ := procProcessIdToSessionId.Call(
@@ -140,6 +162,96 @@ func fillUser(h windows.Handle, pi *shared.ProcessInfo) {
 		pi.UserName = domain + `\` + name
 	} else {
 		pi.UserName = name
+	}
+}
+
+func fillExePath(h windows.Handle, pi *shared.ProcessInfo) {
+	if pi.ExePath != "" {
+		return
+	}
+
+	size := uint32(260)
+	for i := 0; i < 4; i++ {
+		buf := make([]uint16, size)
+		sz := size
+		err := windows.QueryFullProcessImageName(h, 0, &buf[0], &sz)
+		if err == nil {
+			if sz > 0 {
+				pi.ExePath = windows.UTF16ToString(buf[:sz])
+			}
+			return
+		}
+		if size < 32768 && err == windows.ERROR_INSUFFICIENT_BUFFER {
+			size *= 2
+			continue
+		}
+		return
+	}
+}
+
+func fillIntegrity(h windows.Handle, pi *shared.ProcessInfo) {
+	var token windows.Token
+	if windows.OpenProcessToken(h, windows.TOKEN_QUERY, &token) != nil {
+		return
+	}
+	defer token.Close()
+
+	ilevel := tokenIntegrity(token)
+	if ilevel != "" {
+		pi.Integrity = ilevel
+	}
+}
+
+func tokenIntegrity(token windows.Token) string {
+	var outLen uint32
+	buf := make([]byte, 256)
+
+	for {
+		err := windows.GetTokenInformation(token, windows.TokenIntegrityLevel, &buf[0], uint32(len(buf)), &outLen)
+		if err == nil {
+			break
+		}
+		if err != windows.ERROR_INSUFFICIENT_BUFFER || outLen == 0 {
+			return ""
+		}
+		buf = make([]byte, outLen)
+	}
+
+	tml := (*windows.Tokenmandatorylabel)(unsafe.Pointer(&buf[0]))
+	if tml.Label.Sid == nil {
+		return ""
+	}
+
+	sidStr := tml.Label.Sid.String()
+	if sidStr == "" {
+		return ""
+	}
+	parts := strings.Split(sidStr, "-")
+	if len(parts) == 0 {
+		return ""
+	}
+	rid, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return ""
+	}
+
+	switch rid {
+	case 0x0000:
+		return "Untrusted"
+	case 0x1000:
+		return "Low"
+	case 0x2000:
+		return "Medium"
+	case 0x2100:
+		return "MediumPlus"
+	case 0x3000:
+		return "High"
+	case 0x4000:
+		return "System"
+	case 0x5000:
+		return "Protected"
+	default:
+		return fmt.Sprintf("0x%X", rid)
 	}
 }
 

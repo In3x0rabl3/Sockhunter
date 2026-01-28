@@ -4,6 +4,7 @@ import "time"
 
 type ProcessInfo struct {
 	Pid         int
+	ParentPid   int
 	Name        string
 	SessionID   uint32
 	SessionName string
@@ -12,6 +13,14 @@ type ProcessInfo struct {
 	Status   string // e.g. "Running"
 
 	UserName    string        // DOMAIN\User
+	ExePath     string
+	Integrity   string
+	IOReadBytes  uint64
+	IOWriteBytes uint64
+	IOOtherBytes uint64
+	IOReadBps    uint64
+	IOWriteBps   uint64
+	IOOtherBps   uint64
 	CpuTime     time.Duration // user + kernel
 	WindowTitle string        // reserved
 }

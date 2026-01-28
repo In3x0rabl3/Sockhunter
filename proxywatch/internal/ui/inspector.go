@@ -48,13 +48,79 @@ func (app *AppState) DrawInspector() {
 	PutString(s, 0, y, fmt.Sprintf("Active: %v", cand.ActiveProxying))
 	y += 2
 
-	PutString(s, 0, y, "Outbound:")
+	PutString(s, 0, y, "Process:")
 	y++
-	PutString(s, 2, y, fmt.Sprintf("Total: %d", cand.OutTotal))
+
+	user := cand.Proc.UserName
+	if user == "" {
+		user = "(unknown)"
+	}
+	PutString(s, 2, y, TruncateToWidth(fmt.Sprintf("User: %s", user), w-2))
 	y++
-	PutString(s, 2, y, fmt.Sprintf("Internal: %d", cand.OutInternal))
+
+	sessionName := cand.Proc.SessionName
+	if sessionName == "" && cand.Proc.SessionID != 0 {
+		sessionName = fmt.Sprintf("Session-%d", cand.Proc.SessionID)
+	}
+	if sessionName == "" {
+		sessionName = "(unknown)"
+	}
+	PutString(s, 2, y, TruncateToWidth(fmt.Sprintf("Session: %s (%d)", sessionName, cand.Proc.SessionID), w-2))
 	y++
-	PutString(s, 2, y, fmt.Sprintf("External: %d", cand.OutExternal))
+
+	parentPID := "unknown"
+	if cand.Proc.ParentPid > 0 {
+		parentPID = fmt.Sprintf("%d", cand.Proc.ParentPid)
+	}
+	PutString(s, 2, y, fmt.Sprintf("Parent PID: %s", parentPID))
+	y++
+
+	path := cand.Proc.ExePath
+	if path == "" {
+		path = "(unknown)"
+	}
+	PutString(s, 2, y, TruncateToWidth(fmt.Sprintf("Path: %s", path), w-2))
+	y++
+
+	integrity := cand.Proc.Integrity
+	if integrity == "" {
+		integrity = "(unknown)"
+	}
+	PutString(s, 2, y, fmt.Sprintf("Integrity: %s", integrity))
+	y += 2
+
+	established := 0
+	for _, cn := range cand.Conns {
+		if cn.State == "ESTABLISHED" {
+			established++
+		}
+	}
+
+	PutString(s, 0, y, "Networking:")
+	y++
+	PutString(s, 2, y, fmt.Sprintf("Inbound: %d  Outbound: %d", cand.InboundTotal, cand.OutTotal))
+	y++
+	PutString(s, 2, y, fmt.Sprintf("Listeners: %d  Established: %d", len(cand.Listeners), established))
+	y++
+	PutString(s, 2, y,
+		TruncateToWidth(
+			fmt.Sprintf(
+				"IO bytes: %s",
+				FormatIOBytes(cand.Proc.IOReadBytes, cand.Proc.IOWriteBytes, cand.Proc.IOOtherBytes),
+			),
+			w-2,
+		),
+	)
+	y++
+	PutString(s, 2, y,
+		TruncateToWidth(
+			fmt.Sprintf(
+				"IO rate:  %s",
+				FormatIORate(cand.Proc.IOReadBps, cand.Proc.IOWriteBps, cand.Proc.IOOtherBps),
+			),
+			w-2,
+		),
+	)
 	y++
 	y++
 

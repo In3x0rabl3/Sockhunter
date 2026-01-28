@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"proxywatch/internal/classifier"
+	"proxywatch/internal/shared"
 	"proxywatch/internal/telemetry"
 	"proxywatch/internal/ui"
 )
@@ -37,6 +38,14 @@ func parseRoleFilter(s string) map[string]bool {
 type scanner struct {
 	minScore   int
 	roleFilter map[string]bool
+	lastIO     map[int]ioSample
+}
+
+type ioSample struct {
+	read  uint64
+	write uint64
+	other uint64
+	ts    time.Time
 }
 
 func (s *scanner) Refresh(app *ui.AppState) {
@@ -51,9 +60,11 @@ func (s *scanner) Refresh(app *ui.AppState) {
 	}
 
 	cands := classifier.Classify(snap, s.minScore, s.roleFilter)
+	now := time.Now().UTC()
+	applyIORates(cands, now, &s.lastIO)
 
 	app.Candidates = cands
-	app.LastUpdate = time.Now().UTC()
+	app.LastUpdate = now
 	app.LastError = ""
 
 	// maintain selection across refreshes
@@ -74,6 +85,46 @@ func (s *scanner) Refresh(app *ui.AppState) {
 
 	app.SelectedIdx = 0
 	app.SelectedPID = app.Candidates[0].Proc.Pid
+}
+
+func applyIORates(cands []shared.Candidate, now time.Time, prev *map[int]ioSample) {
+	if *prev == nil {
+		*prev = make(map[int]ioSample, len(cands))
+	}
+
+	next := make(map[int]ioSample, len(cands))
+	for i := range cands {
+		pi := cands[i].Proc
+		if pi == nil {
+			continue
+		}
+
+		sample := ioSample{
+			read:  pi.IOReadBytes,
+			write: pi.IOWriteBytes,
+			other: pi.IOOtherBytes,
+			ts:    now,
+		}
+
+		if p, ok := (*prev)[pi.Pid]; ok && now.After(p.ts) {
+			dt := now.Sub(p.ts).Seconds()
+			if dt > 0 {
+				if pi.IOReadBytes >= p.read {
+					pi.IOReadBps = uint64(float64(pi.IOReadBytes-p.read) / dt)
+				}
+				if pi.IOWriteBytes >= p.write {
+					pi.IOWriteBps = uint64(float64(pi.IOWriteBytes-p.write) / dt)
+				}
+				if pi.IOOtherBytes >= p.other {
+					pi.IOOtherBps = uint64(float64(pi.IOOtherBytes-p.other) / dt)
+				}
+			}
+		}
+
+		next[pi.Pid] = sample
+	}
+
+	*prev = next
 }
 
 /* ---------------- main ---------------- */

@@ -78,6 +78,7 @@ func ScoreCandidate(c *shared.Candidate) {
 	c.OutTotal = outTotal
 	c.OutExternal = outExternal
 	c.OutInternal = outInternal
+	c.InboundTotal = activeClients
 
 	if activeClients > 0 {
 		recentClientSeen[p.Pid] = now
