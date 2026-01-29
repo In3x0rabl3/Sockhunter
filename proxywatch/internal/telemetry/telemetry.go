@@ -10,25 +10,13 @@ import (
 	"proxywatch/internal/shared"
 )
 
-type Snapshot struct {
-	Timestamp   time.Time
-	Processes   map[int]*shared.ProcessInfo
-	Listeners   []shared.ListenerInfo
-	Connections []shared.ConnectionInfo
-}
-
-const (
-	burstSamples = 5
-	burstSleep   = 40 * time.Millisecond
-)
-
-func Collect() (*Snapshot, error) {
+func Collect() (*shared.Snapshot, error) {
 	listeners, conns, err := GetTCPTable()
 	if err != nil {
 		return nil, fmt.Errorf("netstat: %w", err)
 	}
 
-	if burstSamples > 1 {
+	if shared.BurstSamples > 1 {
 		listeners, conns = burstCapture(listeners, conns)
 	}
 
@@ -37,7 +25,7 @@ func Collect() (*Snapshot, error) {
 		return nil, fmt.Errorf("process: %w", err)
 	}
 
-	return &Snapshot{
+	return &shared.Snapshot{
 		Timestamp:   time.Now().UTC(),
 		Processes:   procs,
 		Listeners:   listeners,
@@ -45,33 +33,19 @@ func Collect() (*Snapshot, error) {
 	}, nil
 }
 
-type listenerKey struct {
-	pid  int
-	addr string
-	port int
-}
-
-type connKey struct {
-	pid        int
-	localAddr  string
-	localPort  int
-	remoteAddr string
-	remotePort int
-}
-
 func burstCapture(
 	baseListeners []shared.ListenerInfo,
 	baseConns []shared.ConnectionInfo,
 ) ([]shared.ListenerInfo, []shared.ConnectionInfo) {
 
-	listenerMap := make(map[listenerKey]shared.ListenerInfo, len(baseListeners))
-	connMap := make(map[connKey]shared.ConnectionInfo, len(baseConns))
+	listenerMap := make(map[shared.ListenerKey]shared.ListenerInfo, len(baseListeners))
+	connMap := make(map[shared.ConnKey]shared.ConnectionInfo, len(baseConns))
 
 	mergeListeners(listenerMap, baseListeners)
 	mergeConns(connMap, baseConns)
 
-	for i := 1; i < burstSamples; i++ {
-		time.Sleep(burstSleep)
+	for i := 1; i < shared.BurstSamples; i++ {
+		time.Sleep(shared.BurstSleep)
 		listeners, conns, err := GetTCPTable()
 		if err != nil {
 			continue
@@ -93,25 +67,25 @@ func burstCapture(
 	return outListeners, outConns
 }
 
-func mergeListeners(dest map[listenerKey]shared.ListenerInfo, in []shared.ListenerInfo) {
+func mergeListeners(dest map[shared.ListenerKey]shared.ListenerInfo, in []shared.ListenerInfo) {
 	for _, l := range in {
-		key := listenerKey{
-			pid:  l.Pid,
-			addr: l.LocalAddress,
-			port: l.LocalPort,
+		key := shared.ListenerKey{
+			Pid:  l.Pid,
+			Addr: l.LocalAddress,
+			Port: l.LocalPort,
 		}
 		dest[key] = l
 	}
 }
 
-func mergeConns(dest map[connKey]shared.ConnectionInfo, in []shared.ConnectionInfo) {
+func mergeConns(dest map[shared.ConnKey]shared.ConnectionInfo, in []shared.ConnectionInfo) {
 	for _, c := range in {
-		key := connKey{
-			pid:        c.Pid,
-			localAddr:  c.LocalAddress,
-			localPort:  c.LocalPort,
-			remoteAddr: c.RemoteAddress,
-			remotePort: c.RemotePort,
+		key := shared.ConnKey{
+			Pid:        c.Pid,
+			LocalAddr:  c.LocalAddress,
+			LocalPort:  c.LocalPort,
+			RemoteAddr: c.RemoteAddress,
+			RemotePort: c.RemotePort,
 		}
 
 		existing, ok := dest[key]

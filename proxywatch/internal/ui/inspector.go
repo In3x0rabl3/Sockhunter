@@ -8,7 +8,7 @@ import (
 	"proxywatch/internal/shared"
 )
 
-func (app *AppState) DrawInspector() {
+func DrawInspector(app *shared.AppState) {
 	s := app.Screen
 	s.Clear()
 

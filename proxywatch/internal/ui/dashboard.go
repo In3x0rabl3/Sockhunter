@@ -7,7 +7,7 @@ import (
 	"proxywatch/internal/shared"
 )
 
-func (app *AppState) DrawDashboard() {
+func DrawDashboard(app *shared.AppState) {
 	s := app.Screen
 	s.Clear()
 

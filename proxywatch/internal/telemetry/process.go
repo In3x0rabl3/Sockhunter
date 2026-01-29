@@ -15,20 +15,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-var (
-	modKernel32              = windows.NewLazySystemDLL("kernel32.dll")
-	procGetProcessTimes      = modKernel32.NewProc("GetProcessTimes")
-	procGetProcessIoCounters = modKernel32.NewProc("GetProcessIoCounters")
-	procProcessIdToSessionId = modKernel32.NewProc("ProcessIdToSessionId")
-	modPsapi                 = windows.NewLazySystemDLL("psapi.dll")
-	procGetProcessMemoryInfo = modPsapi.NewProc("GetProcessMemoryInfo")
-)
-
-type processMemoryCounters struct {
-	Cb             uint32
-	WorkingSetSize uintptr
-}
-
 func GetProcessInfoMap() (map[int]*shared.ProcessInfo, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -88,7 +74,7 @@ func GetProcessInfoMap() (map[int]*shared.ProcessInfo, error) {
 
 func fillTimes(h windows.Handle, pi *shared.ProcessInfo) {
 	var c, e, k, u windows.Filetime
-	if r, _, _ := procGetProcessTimes.Call(
+	if r, _, _ := shared.ProcGetProcessTimes.Call(
 		uintptr(h),
 		uintptr(unsafe.Pointer(&c)),
 		uintptr(unsafe.Pointer(&e)),
@@ -102,10 +88,10 @@ func fillTimes(h windows.Handle, pi *shared.ProcessInfo) {
 }
 
 func fillMemory(h windows.Handle, pi *shared.ProcessInfo) {
-	var pmc processMemoryCounters
+	var pmc shared.ProcessMemoryCounters
 	pmc.Cb = uint32(unsafe.Sizeof(pmc))
 
-	if r, _, _ := procGetProcessMemoryInfo.Call(
+	if r, _, _ := shared.ProcGetProcessMemoryInfo.Call(
 		uintptr(h),
 		uintptr(unsafe.Pointer(&pmc)),
 		uintptr(pmc.Cb),
@@ -116,7 +102,7 @@ func fillMemory(h windows.Handle, pi *shared.ProcessInfo) {
 
 func fillIOCounters(h windows.Handle, pi *shared.ProcessInfo) {
 	var io windows.IO_COUNTERS
-	if r, _, _ := procGetProcessIoCounters.Call(
+	if r, _, _ := shared.ProcGetProcessIoCounters.Call(
 		uintptr(h),
 		uintptr(unsafe.Pointer(&io)),
 	); r != 0 {
@@ -128,7 +114,7 @@ func fillIOCounters(h windows.Handle, pi *shared.ProcessInfo) {
 
 func fillSession(pi *shared.ProcessInfo) {
 	var sid uint32
-	if r, _, _ := procProcessIdToSessionId.Call(
+	if r, _, _ := shared.ProcProcessIdToSessionId.Call(
 		uintptr(uint32(pi.Pid)),
 		uintptr(unsafe.Pointer(&sid)),
 	); r != 0 {

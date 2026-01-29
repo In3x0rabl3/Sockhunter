@@ -7,59 +7,6 @@ import (
 	"proxywatch/internal/shared"
 )
 
-type ConnKey struct {
-	Pid        int
-	LocalAddr  string
-	LocalPort  int
-	RemoteAddr string
-	RemotePort int
-}
-
-type procHistory struct {
-	lastSeen       time.Time
-	lastActive     time.Time
-	lastSuspicious time.Time
-	suspicionKind  int
-	stickyScore    int
-}
-
-const (
-	suspicionNone = iota
-	suspicionControl
-	suspicionProxy
-)
-
-var (
-	reverseControlSeen        = make(map[ConnKey]time.Time)
-	reverseControlMinDuration = 10 * time.Second
-	recentClientSeen          = make(map[int]time.Time)
-	recentOutboundSeen        = make(map[int]time.Time)
-	activeWindow              = 10 * time.Second
-	activeHoldWindow          = 30 * time.Second
-	suspicionWindow           = 5 * time.Minute
-	historyTTL                = 5 * time.Minute
-	cleanupInterval           = 30 * time.Second
-	reverseStickyScore        = 90
-	forwardStickyScore        = 70
-	reverseControlBaseScore   = 40
-	minInternalTargetsForRev  = 2
-	minInternalPortsForRev    = 2
-	outboundOnlyExternalCap   = 30
-	procHistoryByPID          = make(map[int]*procHistory)
-	lastHistoryCleanup        time.Time
-	benignControlPorts        = map[int]bool{
-		53:   true,
-		80:   true,
-		443:  true,
-		8080: true,
-		8443: true,
-		8000: true,
-		8001: true,
-		8008: true,
-		8888: true,
-	}
-)
-
 func ScoreCandidate(c *shared.Candidate) {
 	scoreVal := 0
 	reasons := []string{}
@@ -81,19 +28,19 @@ func ScoreCandidate(c *shared.Candidate) {
 	c.InboundTotal = activeClients
 
 	if activeClients > 0 {
-		recentClientSeen[p.Pid] = now
+		shared.RecentClientSeen[p.Pid] = now
 	}
 	if outTotal > 0 {
-		recentOutboundSeen[p.Pid] = now
+		shared.RecentOutboundSeen[p.Pid] = now
 	}
 
 	inboundRecent := activeClients > 0
-	if t, ok := recentClientSeen[p.Pid]; ok && now.Sub(t) <= activeWindow {
+	if t, ok := shared.RecentClientSeen[p.Pid]; ok && now.Sub(t) <= shared.ActiveWindow {
 		inboundRecent = true
 	}
 
 	outboundRecent := outTotal > 0
-	if t, ok := recentOutboundSeen[p.Pid]; ok && now.Sub(t) <= activeWindow {
+	if t, ok := shared.RecentOutboundSeen[p.Pid]; ok && now.Sub(t) <= shared.ActiveWindow {
 		outboundRecent = true
 	}
 
@@ -110,8 +57,8 @@ func ScoreCandidate(c *shared.Candidate) {
 	outboundActive, distinctTargets, distinctTargetPorts := outboundActivity(c.Conns, ports)
 	internalTargets, internalPorts, internalLateral := outboundInternalSummary(c.Conns, ports)
 	reverseTunnelEligible := internalLateral ||
-		len(internalTargets) >= minInternalTargetsForRev ||
-		len(internalPorts) >= minInternalPortsForRev
+		len(internalTargets) >= shared.MinInternalTargetsForRev ||
+		len(internalPorts) >= shared.MinInternalPortsForRev
 
 	if controlConn != nil && !hasListener {
 		controlKey := connKeyFromConn(p.Pid, *controlConn)
@@ -126,23 +73,23 @@ func ScoreCandidate(c *shared.Candidate) {
 	}
 
 	if forwardActiveNow || reverseProxyNow {
-		hist.lastActive = now
+		hist.LastActive = now
 	}
 
 	if reverseProxyNow {
-		hist.lastSuspicious = now
-		hist.suspicionKind = suspicionProxy
-		if hist.stickyScore < reverseStickyScore {
-			hist.stickyScore = reverseStickyScore
+		hist.LastSuspicious = now
+		hist.SuspicionKind = shared.SuspicionProxy
+		if hist.StickyScore < shared.ReverseStickyScore {
+			hist.StickyScore = shared.ReverseStickyScore
 		}
 	} else if forwardActiveNow {
-		if hist.stickyScore < forwardStickyScore {
-			hist.stickyScore = forwardStickyScore
+		if hist.StickyScore < shared.ForwardStickyScore {
+			hist.StickyScore = shared.ForwardStickyScore
 		}
 	}
 
-	activeRecent := !hist.lastActive.IsZero() && now.Sub(hist.lastActive) <= activeHoldWindow
-	suspiciousRecent := !hist.lastSuspicious.IsZero() && now.Sub(hist.lastSuspicious) <= suspicionWindow
+	activeRecent := !hist.LastActive.IsZero() && now.Sub(hist.LastActive) <= shared.ActiveHoldWindow
+	suspiciousRecent := !hist.LastSuspicious.IsZero() && now.Sub(hist.LastSuspicious) <= shared.SuspicionWindow
 
 	activeProxying := forwardActiveNow || reverseProxyNow || activeRecent
 
@@ -248,21 +195,21 @@ func ScoreCandidate(c *shared.Candidate) {
 		!hasListener &&
 		!reverseProxyNow &&
 		!reverseControl {
-		if c.Score > outboundOnlyExternalCap {
-			c.Score = outboundOnlyExternalCap
+		if c.Score > shared.OutboundOnlyExternalCap {
+			c.Score = shared.OutboundOnlyExternalCap
 			c.Reasons = append(c.Reasons, "External-only outbound traffic de-emphasized")
 		}
 	}
 
-	if reverseProxyNow || (suspiciousRecent && hist.suspicionKind == suspicionProxy) {
+	if reverseProxyNow || (suspiciousRecent && hist.SuspicionKind == shared.SuspicionProxy) {
 		c.Role = "reverse-proxy"
-		if hist.stickyScore > c.Score {
-			c.Score = hist.stickyScore
+		if hist.StickyScore > c.Score {
+			c.Score = hist.StickyScore
 		}
 		if reverseProxyNow {
 			c.Reasons = append(c.Reasons, "Persistent control channel with proxied outbound activity")
 		}
-	} else if reverseControl || (suspiciousRecent && hist.suspicionKind == suspicionControl) {
+	} else if reverseControl || (suspiciousRecent && hist.SuspicionKind == shared.SuspicionControl) {
 		c.Role = "reverse-control"
 		c.ActiveProxying = false
 		c.Reasons = []string{
@@ -271,14 +218,14 @@ func ScoreCandidate(c *shared.Candidate) {
 
 		if reverseControl {
 			base := controlStickyScore(controlSecs)
-			if hist.stickyScore < base {
-				hist.stickyScore = base
+			if hist.StickyScore < base {
+				hist.StickyScore = base
 			}
-			hist.lastSuspicious = now
-			hist.suspicionKind = suspicionControl
+			hist.LastSuspicious = now
+			hist.SuspicionKind = shared.SuspicionControl
 		}
-		if hist.stickyScore > c.Score {
-			c.Score = hist.stickyScore
+		if hist.StickyScore > c.Score {
+			c.Score = hist.StickyScore
 		}
 	}
 
@@ -442,7 +389,7 @@ func outboundInternalSummary(
 func outboundTargetsExcluding(
 	conns []shared.ConnectionInfo,
 	ports map[int]struct{},
-	exclude *ConnKey,
+	exclude *shared.ConnKey,
 ) (total, external, internal int) {
 
 	for _, c := range conns {
@@ -497,8 +444,8 @@ func localTransportActivity(conns []shared.ConnectionInfo) (bool, int) {
 	return count > 0, count
 }
 
-func connKeyFromConn(pid int, cn shared.ConnectionInfo) ConnKey {
-	return ConnKey{
+func connKeyFromConn(pid int, cn shared.ConnectionInfo) shared.ConnKey {
+	return shared.ConnKey{
 		Pid:        pid,
 		LocalAddr:  cn.LocalAddress,
 		LocalPort:  cn.LocalPort,
@@ -508,22 +455,22 @@ func connKeyFromConn(pid int, cn shared.ConnectionInfo) ConnKey {
 }
 
 func updateConnHistory(pid int, conns []shared.ConnectionInfo, now time.Time) {
-	current := make(map[ConnKey]struct{})
+	current := make(map[shared.ConnKey]struct{})
 	for _, cn := range conns {
 		if !isEstablishedState(cn.State) {
 			continue
 		}
 		key := connKeyFromConn(pid, cn)
 		current[key] = struct{}{}
-		if _, ok := reverseControlSeen[key]; !ok {
-			reverseControlSeen[key] = now
+		if _, ok := shared.ReverseControlSeen[key]; !ok {
+			shared.ReverseControlSeen[key] = now
 		}
 	}
 
-	for k := range reverseControlSeen {
+	for k := range shared.ReverseControlSeen {
 		if k.Pid == pid {
 			if _, ok := current[k]; !ok {
-				delete(reverseControlSeen, k)
+				delete(shared.ReverseControlSeen, k)
 			}
 		}
 	}
@@ -544,12 +491,12 @@ func findPersistentControl(pid int, conns []shared.ConnectionInfo, now time.Time
 		}
 
 		key := connKeyFromConn(pid, cn)
-		first, ok := reverseControlSeen[key]
+		first, ok := shared.ReverseControlSeen[key]
 		if !ok {
 			continue
 		}
 		age := now.Sub(first)
-		if age >= reverseControlMinDuration && age > bestAge {
+		if age >= shared.ReverseControlMinDuration && age > bestAge {
 			tmp := cn
 			best = &tmp
 			bestAge = age
@@ -562,34 +509,34 @@ func findPersistentControl(pid int, conns []shared.ConnectionInfo, now time.Time
 	return best, int(bestAge.Seconds())
 }
 
-func getHistory(pid int, now time.Time) *procHistory {
-	h := procHistoryByPID[pid]
+func getHistory(pid int, now time.Time) *shared.ProcHistory {
+	h := shared.ProcHistoryByPID[pid]
 	if h == nil {
-		h = &procHistory{}
-		procHistoryByPID[pid] = h
+		h = &shared.ProcHistory{}
+		shared.ProcHistoryByPID[pid] = h
 	}
-	h.lastSeen = now
+	h.LastSeen = now
 	return h
 }
 
 func purgeHistory(now time.Time) {
-	if !lastHistoryCleanup.IsZero() && now.Sub(lastHistoryCleanup) < cleanupInterval {
+	if !shared.LastHistoryCleanup.IsZero() && now.Sub(shared.LastHistoryCleanup) < shared.CleanupInterval {
 		return
 	}
-	lastHistoryCleanup = now
+	shared.LastHistoryCleanup = now
 
-	for pid, h := range procHistoryByPID {
-		if now.Sub(h.lastSeen) <= historyTTL {
+	for pid, h := range shared.ProcHistoryByPID {
+		if now.Sub(h.LastSeen) <= shared.HistoryTTL {
 			continue
 		}
 
-		delete(procHistoryByPID, pid)
-		delete(recentClientSeen, pid)
-		delete(recentOutboundSeen, pid)
+		delete(shared.ProcHistoryByPID, pid)
+		delete(shared.RecentClientSeen, pid)
+		delete(shared.RecentOutboundSeen, pid)
 
-		for k := range reverseControlSeen {
+		for k := range shared.ReverseControlSeen {
 			if k.Pid == pid {
-				delete(reverseControlSeen, k)
+				delete(shared.ReverseControlSeen, k)
 			}
 		}
 	}
@@ -604,7 +551,7 @@ func controlStickyScore(controlSecs int) int {
 	case controlSecs >= 60:
 		return 60
 	default:
-		return reverseControlBaseScore
+		return shared.ReverseControlBaseScore
 	}
 }
 
@@ -630,7 +577,7 @@ func isActiveConnState(state string) bool {
 }
 
 func isLikelyBenignControlPort(port int) bool {
-	return benignControlPorts[port]
+	return shared.BenignControlPorts[port]
 }
 
 func min(a, b int) int {

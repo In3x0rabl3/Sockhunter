@@ -9,47 +9,14 @@ import (
 	"unsafe"
 
 	"proxywatch/internal/shared"
-
-	"golang.org/x/sys/windows"
 )
-
-var (
-	iphlpapi           = windows.NewLazySystemDLL("iphlpapi.dll")
-	procGetExtendedTcp = iphlpapi.NewProc("GetExtendedTcpTable")
-)
-
-const (
-	AF_INET                 = 2
-	AF_INET6                = 23
-	TCP_TABLE_OWNER_PID_ALL = 5
-)
-
-type mibTCPRowOwnerPID struct {
-	State      uint32
-	LocalAddr  uint32
-	LocalPort  uint32
-	RemoteAddr uint32
-	RemotePort uint32
-	OwningPID  uint32
-}
-
-type mibTCP6RowOwnerPID struct {
-	State         uint32
-	LocalAddr     [16]byte
-	LocalScopeId  uint32
-	LocalPort     uint32
-	RemoteAddr    [16]byte
-	RemoteScopeId uint32
-	RemotePort    uint32
-	OwningPID     uint32
-}
 
 func GetTCPTable() ([]shared.ListenerInfo, []shared.ConnectionInfo, error) {
-	l4, c4, err := getTCPTableForFamily(AF_INET)
+	l4, c4, err := getTCPTableForFamily(shared.AF_INET)
 	if err != nil {
 		return nil, nil, err
 	}
-	l6, c6, err := getTCPTableForFamily(AF_INET6)
+	l6, c6, err := getTCPTableForFamily(shared.AF_INET6)
 	if err != nil {
 		return l4, c4, nil
 	}
@@ -59,12 +26,12 @@ func GetTCPTable() ([]shared.ListenerInfo, []shared.ConnectionInfo, error) {
 func getTCPTableForFamily(family uint32) ([]shared.ListenerInfo, []shared.ConnectionInfo, error) {
 	var size uint32
 
-	r0, _, _ := procGetExtendedTcp.Call(
+	r0, _, _ := shared.ProcGetExtendedTcp.Call(
 		0,
 		uintptr(unsafe.Pointer(&size)),
 		0,
 		uintptr(family),
-		uintptr(TCP_TABLE_OWNER_PID_ALL),
+		uintptr(shared.TCP_TABLE_OWNER_PID_ALL),
 		0,
 	)
 
@@ -74,12 +41,12 @@ func getTCPTableForFamily(family uint32) ([]shared.ListenerInfo, []shared.Connec
 	}
 
 	buf := make([]byte, size)
-	r0, _, e1 := procGetExtendedTcp.Call(
+	r0, _, e1 := shared.ProcGetExtendedTcp.Call(
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(unsafe.Pointer(&size)),
 		0,
 		uintptr(family),
-		uintptr(TCP_TABLE_OWNER_PID_ALL),
+		uintptr(shared.TCP_TABLE_OWNER_PID_ALL),
 		0,
 	)
 	if r0 != 0 {
@@ -93,16 +60,16 @@ func getTCPTableForFamily(family uint32) ([]shared.ListenerInfo, []shared.Connec
 	var listeners []shared.ListenerInfo
 	var conns []shared.ConnectionInfo
 
-	if family == AF_INET {
-		rowSize := unsafe.Sizeof(mibTCPRowOwnerPID{})
+	if family == shared.AF_INET {
+		rowSize := unsafe.Sizeof(shared.MIBTCPRowOwnerPID{})
 		for i := uint32(0); i < num; i++ {
-			row := (*mibTCPRowOwnerPID)(unsafe.Pointer(rowPtr + uintptr(i)*rowSize))
+			row := (*shared.MIBTCPRowOwnerPID)(unsafe.Pointer(rowPtr + uintptr(i)*rowSize))
 			parseV4(row, &listeners, &conns)
 		}
 	} else {
-		rowSize := unsafe.Sizeof(mibTCP6RowOwnerPID{})
+		rowSize := unsafe.Sizeof(shared.MIBTCP6RowOwnerPID{})
 		for i := uint32(0); i < num; i++ {
-			row := (*mibTCP6RowOwnerPID)(unsafe.Pointer(rowPtr + uintptr(i)*rowSize))
+			row := (*shared.MIBTCP6RowOwnerPID)(unsafe.Pointer(rowPtr + uintptr(i)*rowSize))
 			parseV6(row, &listeners, &conns)
 		}
 	}
@@ -110,7 +77,7 @@ func getTCPTableForFamily(family uint32) ([]shared.ListenerInfo, []shared.Connec
 	return listeners, conns, nil
 }
 
-func parseV4(r *mibTCPRowOwnerPID, l *[]shared.ListenerInfo, c *[]shared.ConnectionInfo) {
+func parseV4(r *shared.MIBTCPRowOwnerPID, l *[]shared.ListenerInfo, c *[]shared.ConnectionInfo) {
 	state := tcpStateToString(r.State)
 	lip := net.IPv4(byte(r.LocalAddr), byte(r.LocalAddr>>8), byte(r.LocalAddr>>16), byte(r.LocalAddr>>24)).String()
 	rip := net.IPv4(byte(r.RemoteAddr), byte(r.RemoteAddr>>8), byte(r.RemoteAddr>>16), byte(r.RemoteAddr>>24)).String()
@@ -137,7 +104,7 @@ func parseV4(r *mibTCPRowOwnerPID, l *[]shared.ListenerInfo, c *[]shared.Connect
 	}
 }
 
-func parseV6(r *mibTCP6RowOwnerPID, l *[]shared.ListenerInfo, c *[]shared.ConnectionInfo) {
+func parseV6(r *shared.MIBTCP6RowOwnerPID, l *[]shared.ListenerInfo, c *[]shared.ConnectionInfo) {
 	lip := net.IP(r.LocalAddr[:]).String()
 	rip := net.IP(r.RemoteAddr[:]).String()
 	lp := ntohs(r.LocalPort)

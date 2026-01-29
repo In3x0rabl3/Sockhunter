@@ -4,12 +4,11 @@ import (
 	"sort"
 
 	"proxywatch/internal/shared"
-	"proxywatch/internal/telemetry"
 )
 
 // Classify converts a telemetry snapshot into classified candidates.
 func Classify(
-	snap *telemetry.Snapshot,
+	snap *shared.Snapshot,
 	minScore int,
 	roleFilter map[string]bool,
 ) []shared.Candidate {
@@ -82,7 +81,7 @@ func rolePriority(role string) int {
 	}
 }
 
-func buildCandidates(snap *telemetry.Snapshot) []shared.Candidate {
+func buildCandidates(snap *shared.Snapshot) []shared.Candidate {
 	lmap := make(map[int][]shared.ListenerInfo)
 	for _, l := range snap.Listeners {
 		lmap[l.Pid] = append(lmap[l.Pid], l)

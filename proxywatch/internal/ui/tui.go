@@ -4,16 +4,13 @@ import (
 	"strconv"
 	"time"
 
+	"proxywatch/internal/shared"
 	"proxywatch/internal/telemetry"
 
 	"github.com/gdamore/tcell/v2"
 )
 
-type Scanner interface {
-	Refresh(app *AppState)
-}
-
-func Run(app *AppState, scanner Scanner) error {
+func Run(app *shared.AppState, scanner shared.Scanner) error {
 	s, err := tcell.NewScreen()
 	if err != nil {
 		return err
@@ -27,9 +24,8 @@ func Run(app *AppState, scanner Scanner) error {
 	if app.RefreshInt <= 0 {
 		app.RefreshInt = 1 * time.Second
 	}
-	app.Killed = make(map[int]bool)
 	app.SelectedIdx = -1
-	app.Mode = ModeDashboard
+	app.Mode = shared.ModeDashboard
 
 	scanner.Refresh(app)
 
@@ -45,10 +41,10 @@ func Run(app *AppState, scanner Scanner) error {
 
 	for {
 		switch app.Mode {
-		case ModeDashboard:
-			app.DrawDashboard()
-		case ModeInspect:
-			app.DrawInspector()
+		case shared.ModeDashboard:
+			DrawDashboard(app)
+		case shared.ModeInspect:
+			DrawInspector(app)
 		}
 		s.Show()
 
@@ -61,7 +57,7 @@ func Run(app *AppState, scanner Scanner) error {
 			case *tcell.EventKey:
 				switch app.Mode {
 
-				case ModeDashboard:
+				case shared.ModeDashboard:
 					switch tev.Key() {
 					case tcell.KeyUp:
 						if len(app.Candidates) > 0 &&
@@ -80,7 +76,7 @@ func Run(app *AppState, scanner Scanner) error {
 						if app.SelectedIdx >= 0 &&
 							app.SelectedIdx < len(app.Candidates) {
 							app.InspectPID = app.Candidates[app.SelectedIdx].Proc.Pid
-							app.Mode = ModeInspect
+							app.Mode = shared.ModeInspect
 						}
 					}
 
@@ -88,16 +84,16 @@ func Run(app *AppState, scanner Scanner) error {
 						return nil
 					}
 
-				case ModeInspect:
+				case shared.ModeInspect:
 					if tev.Key() == tcell.KeyEscape {
-						app.Mode = ModeDashboard
+						app.Mode = shared.ModeDashboard
 					}
 					if tev.Rune() == 'q' {
 						return nil
 					}
 					if tev.Rune() == 'k' || tev.Rune() == 'K' {
 						pid := app.InspectPID
-						idx := app.FindIndexByPID(pid)
+						idx := FindIndexByPID(app, pid)
 						if idx == -1 {
 							app.LastError = "Process no longer present"
 							break
@@ -107,7 +103,6 @@ func Run(app *AppState, scanner Scanner) error {
 							app.LastError = "Kill failed: " + err.Error()
 						} else {
 							app.LastError = "Killed PID " + strconv.Itoa(pid) + " (" + app.Candidates[idx].Proc.Name + ")"
-							app.Killed[pid] = true
 						}
 					}
 				}
