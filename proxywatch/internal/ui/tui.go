@@ -36,6 +36,38 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 		}
 	}()
 
+	type refreshResult struct {
+		candidates          []shared.Candidate
+		lastError           string
+		lastUpdate          time.Time
+		selectedPID         int
+		selectedIdx         int
+		selectionPIDAtStart int
+	}
+
+	refreshCh := make(chan refreshResult, 1)
+	refreshInFlight := false
+	startRefresh := func() {
+		if refreshInFlight {
+			return
+		}
+		refreshInFlight = true
+		selectionPIDAtStart := app.SelectedPID
+		go func() {
+			tmp := *app
+			tmp.Screen = nil
+			scanner.Refresh(&tmp)
+			refreshCh <- refreshResult{
+				candidates:          tmp.Candidates,
+				lastError:           tmp.LastError,
+				lastUpdate:          tmp.LastUpdate,
+				selectedPID:         tmp.SelectedPID,
+				selectedIdx:         tmp.SelectedIdx,
+				selectionPIDAtStart: selectionPIDAtStart,
+			}
+		}()
+	}
+
 	tick := time.NewTicker(app.RefreshInt)
 	defer tick.Stop()
 
@@ -93,7 +125,7 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 					}
 					if tev.Rune() == 'k' || tev.Rune() == 'K' {
 						pid := app.InspectPID
-						idx := FindIndexByPID(app, pid)
+						idx := FindIndexByPID(app.Candidates, pid)
 						if idx == -1 {
 							app.LastError = "Process no longer present"
 							break
@@ -109,7 +141,32 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 			}
 
 		case <-tick.C:
-			scanner.Refresh(app)
+			startRefresh()
+		case res := <-refreshCh:
+			refreshInFlight = false
+			app.Candidates = res.candidates
+			app.LastError = res.lastError
+			app.LastUpdate = res.lastUpdate
+
+			if len(app.Candidates) == 0 {
+				app.SelectedIdx = -1
+				app.SelectedPID = 0
+				break
+			}
+
+			if app.SelectedPID != res.selectionPIDAtStart {
+				idx := FindIndexByPID(app.Candidates, app.SelectedPID)
+				if idx >= 0 {
+					app.SelectedIdx = idx
+				} else {
+					app.SelectedIdx = 0
+					app.SelectedPID = app.Candidates[0].Proc.Pid
+				}
+				break
+			}
+
+			app.SelectedPID = res.selectedPID
+			app.SelectedIdx = res.selectedIdx
 		}
 	}
 }

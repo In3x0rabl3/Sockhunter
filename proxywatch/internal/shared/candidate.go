@@ -17,6 +17,7 @@ type Candidate struct {
 	OutTotal    int
 	OutExternal int
 	OutInternal int
+	OutLoopback int
 
 	InboundTotal int
 }

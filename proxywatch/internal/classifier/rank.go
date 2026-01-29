@@ -20,11 +20,12 @@ func ScoreCandidate(c *shared.Candidate) {
 	hasListener := len(ports) > 0
 
 	activeClients, _ := countActiveClientSessions(c.Conns, ports)
-	outTotal, outExternal, outInternal := outboundTargets(c.Conns, ports)
+	outTotal, outExternal, outInternal, outLoopback := outboundTargets(c.Conns, ports)
 
 	c.OutTotal = outTotal
 	c.OutExternal = outExternal
 	c.OutInternal = outInternal
+	c.OutLoopback = outLoopback
 	c.InboundTotal = activeClients
 
 	if activeClients > 0 {
@@ -297,15 +298,18 @@ func countActiveClientSessions(
 func outboundTargets(
 	conns []shared.ConnectionInfo,
 	ports map[int]struct{},
-) (total, external, internal int) {
+) (total, external, internal, loopback int) {
 
 	for _, c := range conns {
 		if !isActiveConnState(c.State) {
 			continue
 		}
 		if c.RemoteAddress == "" ||
-			shared.IsWildcardIP(c.RemoteAddress) ||
-			shared.IsLoopbackIP(c.RemoteAddress) {
+			shared.IsWildcardIP(c.RemoteAddress) {
+			continue
+		}
+		if shared.IsLoopbackIP(c.RemoteAddress) {
+			loopback++
 			continue
 		}
 		if _, ok := ports[c.LocalPort]; ok {

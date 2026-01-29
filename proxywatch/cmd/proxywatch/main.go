@@ -57,12 +57,13 @@ func main() {
 		// intentionally minimal, machine-friendly output
 		for _, c := range cands {
 			fmt.Printf(
-				"pid=%d role=%s active=%v out_int=%d out_ext=%d\n",
+				"pid=%d role=%s active=%v out_int=%d out_ext=%d out_lo=%d\n",
 				c.Proc.Pid,
 				c.Role,
 				c.ActiveProxying,
 				c.OutInternal,
 				c.OutExternal,
+				c.OutLoopback,
 			)
 		}
 

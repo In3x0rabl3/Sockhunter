@@ -100,6 +100,18 @@ func DrawInspector(app *shared.AppState) {
 	y++
 	PutString(s, 2, y, fmt.Sprintf("Inbound: %d  Outbound: %d", cand.InboundTotal, cand.OutTotal))
 	y++
+	PutString(s, 2, y,
+		TruncateToWidth(
+			fmt.Sprintf(
+				"Outbound int/ext/lo: %d/%d/%d",
+				cand.OutInternal,
+				cand.OutExternal,
+				cand.OutLoopback,
+			),
+			w-2,
+		),
+	)
+	y++
 	PutString(s, 2, y, fmt.Sprintf("Listeners: %d  Established: %d", len(cand.Listeners), established))
 	y++
 	PutString(s, 2, y,

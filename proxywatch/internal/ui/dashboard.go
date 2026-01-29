@@ -33,13 +33,13 @@ func DrawDashboard(app *shared.AppState) {
 	}
 
 	PutString(s, 0, y,
-		fmt.Sprintf("%-1s %-6s %-22s %-26s %-7s %-9s",
-			" ", "PID", "NAME", "ROLE", "ACTIVE", "INT/EXT"),
+		fmt.Sprintf("%-1s %-6s %-22s %-26s %-7s %-11s",
+			" ", "PID", "NAME", "ROLE", "ACTIVE", "INT/EXT/LO"),
 	)
 	y++
 	PutString(s, 0, y,
-		fmt.Sprintf("%-1s %-6s %-22s %-26s %-7s %-9s",
-			" ", "-----", "----------------------", "--------------------------", "------", "---------"),
+		fmt.Sprintf("%-1s %-6s %-22s %-26s %-7s %-11s",
+			" ", "-----", "----------------------", "--------------------------", "------", "-----------"),
 	)
 	y++
 
@@ -50,9 +50,9 @@ func DrawDashboard(app *shared.AppState) {
 		}
 
 		name := shared.TrimName(c.Proc.Name, 22)
-		intExt := fmt.Sprintf("%d/%d", c.OutInternal, c.OutExternal)
+		intExt := fmt.Sprintf("%d/%d/%d", c.OutInternal, c.OutExternal, c.OutLoopback)
 
-		line := fmt.Sprintf("%-1s %-6d %-22s %-26s %-7v %-9s",
+		line := fmt.Sprintf("%-1s %-6d %-22s %-26s %-7v %-11s",
 			arrow,
 			c.Proc.Pid,
 			name,

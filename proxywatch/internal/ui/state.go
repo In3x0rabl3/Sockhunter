@@ -17,8 +17,8 @@ func PutString(s tcell.Screen, x, y int, text string) {
 	}
 }
 
-func FindIndexByPID(app *shared.AppState, pid int) int {
-	for i, c := range app.Candidates {
+func FindIndexByPID(cands []shared.Candidate, pid int) int {
+	for i, c := range cands {
 		if c.Proc.Pid == pid {
 			return i
 		}
