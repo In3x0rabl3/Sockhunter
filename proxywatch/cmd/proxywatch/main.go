@@ -38,6 +38,8 @@ func main() {
 	once := flag.Bool("once", false, "Run one scan and exit")
 	roles := flag.String("roles", "", "Comma-separated list of roles to display")
 	interval := flag.Duration("interval", 1*time.Second, "Refresh interval (e.g. 250ms, 1s)")
+	incremental := flag.Bool("incremental", false, "Reuse classification for unchanged PIDs (faster, slightly less accurate)")
+	jsonOut := flag.String("json", "", "Write pretty JSON snapshots to a file (use '-' for stdout)")
 
 	flag.Parse()
 
@@ -52,18 +54,34 @@ func main() {
 			os.Exit(1)
 		}
 
-		cands := classifier.Classify(snap, minScore, roleFilter)
+		cands := classifier.Classify(snap, shared.ClassifyOptions{
+			MinScore:    minScore,
+			RoleFilter:  roleFilter,
+			Incremental: false,
+		}, nil)
 
 		// intentionally minimal, machine-friendly output
+		if *jsonOut != "" {
+			logger, err := shared.NewJSONLogger(*jsonOut, true)
+			if err != nil {
+				fmt.Println("error:", err)
+				os.Exit(1)
+			}
+			_ = logger.WriteSnapshot(snap, cands)
+			_ = logger.Close()
+			return
+		}
+
 		for _, c := range cands {
+			udpInt, udpExt, udpLo := shared.UDPScopeCounts(c.UDPListeners)
 			fmt.Printf(
 				"pid=%d role=%s active=%v out_int=%d out_ext=%d out_lo=%d\n",
 				c.Proc.Pid,
 				c.Role,
 				c.ActiveProxying,
-				c.OutInternal,
-				c.OutExternal,
-				c.OutLoopback,
+				c.OutInternal+udpInt,
+				c.OutExternal+udpExt,
+				c.OutLoopback+udpLo,
 			)
 		}
 
@@ -72,18 +90,37 @@ func main() {
 
 	// -------- interactive TUI --------
 	app := &shared.AppState{
-		RefreshInt: *interval,
+		RefreshInt:         *interval,
+		ConfirmKill:        true,
+		ConfirmKillTimeout: 3 * time.Second,
+	}
+
+	logger, err := shared.NewJSONLogger(*jsonOut, true)
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(1)
 	}
 
 	sc := &shared.ScannerAdapter{
-		MinScore:   minScore,
-		RoleFilter: roleFilter,
-		Collect:    telemetry.Collect,
-		Classify:   classifier.Classify,
+		Options: shared.ClassifyOptions{
+			MinScore:    minScore,
+			RoleFilter:  roleFilter,
+			Incremental: *incremental,
+		},
+		Collect:  telemetry.Collect,
+		Classify: classifier.Classify,
+		Logger:   logger,
 	}
 
 	if err := ui.Run(app, sc); err != nil {
 		fmt.Println("error:", err)
+		if logger != nil {
+			_ = logger.Close()
+		}
 		os.Exit(1)
+	}
+
+	if logger != nil {
+		_ = logger.Close()
 	}
 }

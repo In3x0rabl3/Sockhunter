@@ -24,6 +24,9 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 	if app.RefreshInt <= 0 {
 		app.RefreshInt = 1 * time.Second
 	}
+	if app.ConfirmKillTimeout <= 0 {
+		app.ConfirmKillTimeout = 3 * time.Second
+	}
 	app.SelectedIdx = -1
 	app.Mode = shared.ModeDashboard
 
@@ -72,6 +75,10 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 	defer tick.Stop()
 
 	for {
+		if app.ConfirmKillPID != 0 && time.Now().After(app.ConfirmKillDeadline) {
+			app.ConfirmKillPID = 0
+		}
+
 		switch app.Mode {
 		case shared.ModeDashboard:
 			DrawDashboard(app)
@@ -117,17 +124,36 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 					}
 
 				case shared.ModeInspect:
+					if app.ConfirmKillPID != 0 {
+						if r := tev.Rune(); r != 'k' && r != 'K' && r != 'y' && r != 'Y' {
+							app.ConfirmKillPID = 0
+						}
+					}
 					if tev.Key() == tcell.KeyEscape {
+						app.ConfirmKillPID = 0
 						app.Mode = shared.ModeDashboard
 					}
 					if tev.Rune() == 'q' {
+						app.ConfirmKillPID = 0
 						return nil
 					}
-					if tev.Rune() == 'k' || tev.Rune() == 'K' {
+					if tev.Rune() == 'k' || tev.Rune() == 'K' || tev.Rune() == 'y' || tev.Rune() == 'Y' {
 						pid := app.InspectPID
+						if app.ConfirmKill {
+							if app.ConfirmKillPID != pid || time.Now().After(app.ConfirmKillDeadline) {
+								if tev.Rune() == 'y' || tev.Rune() == 'Y' {
+									break
+								}
+								app.ConfirmKillPID = pid
+								app.ConfirmKillDeadline = time.Now().Add(app.ConfirmKillTimeout)
+								break
+							}
+						}
+
 						idx := FindIndexByPID(app.Candidates, pid)
 						if idx == -1 {
 							app.LastError = "Process no longer present"
+							app.ConfirmKillPID = 0
 							break
 						}
 
@@ -136,6 +162,7 @@ func Run(app *shared.AppState, scanner shared.Scanner) error {
 						} else {
 							app.LastError = "Killed PID " + strconv.Itoa(pid) + " (" + app.Candidates[idx].Proc.Name + ")"
 						}
+						app.ConfirmKillPID = 0
 					}
 				}
 			}

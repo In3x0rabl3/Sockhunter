@@ -25,8 +25,10 @@ const (
 )
 
 var (
-	ReverseControlSeen        = make(map[ConnKey]time.Time)
+	ConnFirstSeen             = make(map[ConnKey]time.Time)
 	ReverseControlMinDuration = 10 * time.Second
+	LongLivedOutboundMinAge   = 60 * time.Second
+	ShortLivedOutboundMaxAge  = 10 * time.Second
 	RecentClientSeen          = make(map[int]time.Time)
 	RecentOutboundSeen        = make(map[int]time.Time)
 	ActiveWindow              = 10 * time.Second

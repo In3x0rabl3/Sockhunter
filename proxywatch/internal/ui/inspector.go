@@ -48,9 +48,6 @@ func DrawInspector(app *shared.AppState) {
 	PutString(s, 0, y, fmt.Sprintf("Active: %v", cand.ActiveProxying))
 	y += 2
 
-	PutString(s, 0, y, "Process:")
-	y++
-
 	user := cand.Proc.UserName
 	if user == "" {
 		user = "(unknown)"
@@ -96,23 +93,23 @@ func DrawInspector(app *shared.AppState) {
 		}
 	}
 
-	PutString(s, 0, y, "Networking:")
+	tcpInbound := cand.InboundTotal
+	tcpOutbound := cand.OutTotal
+	tcpListeners := len(cand.Listeners)
+	udpListeners := len(cand.UDPListeners)
+	udpInbound := 0
+	udpOutbound := 0
+	udpEstablished := 0
+
+	PutString(s, 2, y, fmt.Sprintf("%-5s %-8s %-11s %-9s", "Proto", "In/Out", "Established", "Listeners"))
 	y++
-	PutString(s, 2, y, fmt.Sprintf("Inbound: %d  Outbound: %d", cand.InboundTotal, cand.OutTotal))
+	PutString(s, 2, y, fmt.Sprintf("%-5s %-8s %-11s %-9s", "-----", "------", "-----------", "---------"))
 	y++
-	PutString(s, 2, y,
-		TruncateToWidth(
-			fmt.Sprintf(
-				"Outbound int/ext/lo: %d/%d/%d",
-				cand.OutInternal,
-				cand.OutExternal,
-				cand.OutLoopback,
-			),
-			w-2,
-		),
-	)
+	PutString(s, 2, y, fmt.Sprintf("%-5s %-8s %-11d %-9d", "TCP", fmt.Sprintf("%d/%d", tcpInbound, tcpOutbound), established, tcpListeners))
 	y++
-	PutString(s, 2, y, fmt.Sprintf("Listeners: %d  Established: %d", len(cand.Listeners), established))
+	PutString(s, 2, y, fmt.Sprintf("%-5s %-8s %-11d %-9d", "UDP", fmt.Sprintf("%d/%d", udpInbound, udpOutbound), udpEstablished, udpListeners))
+	y++
+	y++
 	y++
 	PutString(s, 2, y,
 		TruncateToWidth(
@@ -136,16 +133,16 @@ func DrawInspector(app *shared.AppState) {
 	y++
 	y++
 
-	if len(cand.Conns) > 0 && y < h-6 {
-		PutString(s, 0, y, "Connections:")
+	if (len(cand.Conns) > 0 || len(cand.UDPListeners) > 0) && y < h-3 {
+		PutString(s, 2, y, "Proto Local                 Remote                State        Scope")
 		y++
-		PutString(s, 2, y, "Local                 Remote                State        Scope")
-		y++
-		PutString(s, 2, y, "--------------------  --------------------  -----------  -------")
+		PutString(s, 2, y, "----- --------------------  --------------------  -----------  -------")
 		y++
 
+		seen := make(map[string]struct{})
+
 		for _, cn := range cand.Conns {
-			if y >= h-3 {
+			if y >= h-2 {
 				break
 			}
 
@@ -163,8 +160,31 @@ func DrawInspector(app *shared.AppState) {
 
 			l := fmt.Sprintf("%s:%d", cn.LocalAddress, cn.LocalPort)
 			r := fmt.Sprintf("%s:%d", cn.RemoteAddress, cn.RemotePort)
-			line := fmt.Sprintf("%-20s %-20s %-11s %-7s", l, r, cn.State, scope)
+			key := fmt.Sprintf("tcp|%s|%s|%s|%s", l, r, cn.State, scope)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
 
+			line := fmt.Sprintf("%-5s %-20s %-20s %-11s %-7s", "TCP", l, r, cn.State, scope)
+			PutString(s, 2, y, TruncateToWidth(line, w-2))
+			y++
+		}
+
+		for _, ul := range cand.UDPListeners {
+			if y >= h-2 {
+				break
+			}
+
+			l := fmt.Sprintf("%s:%d", ul.LocalAddress, ul.LocalPort)
+			r := "*:*"
+			scope := shared.ScopeLabelForLocalAddress(ul.LocalAddress)
+			key := fmt.Sprintf("udp|%s|%s|%s", l, r, scope)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			line := fmt.Sprintf("%-5s %-20s %-20s %-11s %-7s", "UDP", l, r, "LISTEN", scope)
 			PutString(s, 2, y, TruncateToWidth(line, w-2))
 			y++
 		}
@@ -172,6 +192,16 @@ func DrawInspector(app *shared.AppState) {
 
 	if app.LastError != "" && h >= 2 {
 		PutString(s, 0, h-2, TruncateToWidth("Status: "+app.LastError, w))
+	}
+
+	if app.ConfirmKill && app.ConfirmKillPID == app.InspectPID && time.Now().Before(app.ConfirmKillDeadline) && h >= 2 {
+		msg := fmt.Sprintf(
+			"Confirm kill PID %d (%s): press k again or y within %s",
+			app.InspectPID,
+			cand.Proc.Name,
+			app.ConfirmKillTimeout,
+		)
+		PutString(s, 0, h-2, TruncateToWidth(msg, w))
 	}
 
 	PutString(s, 0, h-1, "ESC return | k kill | q quit")

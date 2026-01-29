@@ -50,7 +50,12 @@ func DrawDashboard(app *shared.AppState) {
 		}
 
 		name := shared.TrimName(c.Proc.Name, 22)
-		intExt := fmt.Sprintf("%d/%d/%d", c.OutInternal, c.OutExternal, c.OutLoopback)
+		udpInt, udpExt, udpLo := shared.UDPScopeCounts(c.UDPListeners)
+		intExt := fmt.Sprintf("%d/%d/%d",
+			c.OutInternal+udpInt,
+			c.OutExternal+udpExt,
+			c.OutLoopback+udpLo,
+		)
 
 		line := fmt.Sprintf("%-1s %-6d %-22s %-26s %-7v %-11s",
 			arrow,

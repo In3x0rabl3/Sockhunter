@@ -31,6 +31,33 @@ func IsWildcardIP(ip string) bool {
 	return ip == "0.0.0.0" || ip == "::"
 }
 
+func UDPScopeCounts(list []UDPListenerInfo) (internal, external, loopback int) {
+	for _, u := range list {
+		switch {
+		case IsLoopbackIP(u.LocalAddress):
+			loopback++
+		case IsInternalIP(u.LocalAddress):
+			internal++
+		default:
+			external++
+		}
+	}
+	return
+}
+
+func ScopeLabelForLocalAddress(addr string) string {
+	switch {
+	case IsWildcardIP(addr):
+		return "any"
+	case IsLoopbackIP(addr):
+		return "loopback"
+	case IsInternalIP(addr):
+		return "internal"
+	default:
+		return "external"
+	}
+}
+
 func TrimName(name string, max int) string {
 	if len(name) <= max {
 		return name

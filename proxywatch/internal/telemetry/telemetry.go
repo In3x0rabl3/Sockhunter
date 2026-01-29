@@ -16,8 +16,9 @@ func Collect() (*shared.Snapshot, error) {
 		return nil, fmt.Errorf("netstat: %w", err)
 	}
 
-	if shared.BurstSamples > 1 {
-		listeners, conns = burstCapture(listeners, conns)
+	samples := burstSampleCount(len(listeners), len(conns))
+	if samples > 1 {
+		listeners, conns = burstCapture(listeners, conns, samples)
 	}
 
 	procs, err := GetProcessInfoMap()
@@ -25,17 +26,21 @@ func Collect() (*shared.Snapshot, error) {
 		return nil, fmt.Errorf("process: %w", err)
 	}
 
+	udpListeners, _ := GetUDPTable()
+
 	return &shared.Snapshot{
-		Timestamp:   time.Now().UTC(),
-		Processes:   procs,
-		Listeners:   listeners,
-		Connections: conns,
+		Timestamp:    time.Now().UTC(),
+		Processes:    procs,
+		Listeners:    listeners,
+		Connections:  conns,
+		UDPListeners: udpListeners,
 	}, nil
 }
 
 func burstCapture(
 	baseListeners []shared.ListenerInfo,
 	baseConns []shared.ConnectionInfo,
+	samples int,
 ) ([]shared.ListenerInfo, []shared.ConnectionInfo) {
 
 	listenerMap := make(map[shared.ListenerKey]shared.ListenerInfo, len(baseListeners))
@@ -44,7 +49,7 @@ func burstCapture(
 	mergeListeners(listenerMap, baseListeners)
 	mergeConns(connMap, baseConns)
 
-	for i := 1; i < shared.BurstSamples; i++ {
+	for i := 1; i < samples; i++ {
 		time.Sleep(shared.BurstSleep)
 		listeners, conns, err := GetTCPTable()
 		if err != nil {
@@ -65,6 +70,18 @@ func burstCapture(
 	}
 
 	return outListeners, outConns
+}
+
+func burstSampleCount(listenerCount, connCount int) int {
+	total := listenerCount + connCount
+	switch {
+	case total <= shared.BurstIdleConnThreshold:
+		return shared.BurstSamplesMin
+	case total <= shared.BurstModerateConnThreshold:
+		return shared.BurstSamplesMid
+	default:
+		return shared.BurstSamplesMax
+	}
 }
 
 func mergeListeners(dest map[shared.ListenerKey]shared.ListenerInfo, in []shared.ListenerInfo) {

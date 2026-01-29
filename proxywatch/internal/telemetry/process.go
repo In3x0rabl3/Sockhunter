@@ -31,6 +31,7 @@ func GetProcessInfoMap() (map[int]*shared.ProcessInfo, error) {
 
 	procs := make(map[int]*shared.ProcessInfo)
 
+	now := time.Now().UTC()
 	for {
 		pid := int(entry.ProcessID)
 		if pid != 0 {
@@ -43,6 +44,11 @@ func GetProcessInfoMap() (map[int]*shared.ProcessInfo, error) {
 				Status:    "Running",
 			}
 
+			meta, metaOK := getCachedMeta(pid, now)
+			if metaOK {
+				applyCachedMeta(pi, meta)
+			}
+
 			const access = windows.PROCESS_QUERY_INFORMATION | windows.PROCESS_VM_READ
 			h, err := windows.OpenProcess(access, false, uint32(pid))
 			if err != nil {
@@ -52,13 +58,19 @@ func GetProcessInfoMap() (map[int]*shared.ProcessInfo, error) {
 				fillTimes(h, pi)
 				fillMemory(h, pi)
 				fillIOCounters(h, pi)
-				fillUser(h, pi)
-				fillExePath(h, pi)
-				fillIntegrity(h, pi)
+				if !metaOK {
+					fillUser(h, pi)
+					fillExePath(h, pi)
+					fillIntegrity(h, pi)
+					fillCompany(pi)
+				}
 				windows.CloseHandle(h)
 			}
 
-			fillSession(pi)
+			if !metaOK {
+				fillSession(pi)
+				cacheMeta(pid, pi, now)
+			}
 			procs[pid] = pi
 		}
 
@@ -186,6 +198,122 @@ func fillIntegrity(h windows.Handle, pi *shared.ProcessInfo) {
 	if ilevel != "" {
 		pi.Integrity = ilevel
 	}
+}
+
+func getCachedMeta(pid int, now time.Time) (shared.ProcessMeta, bool) {
+	return shared.ProcMetaCache.Get(pid, now)
+}
+
+func applyCachedMeta(pi *shared.ProcessInfo, meta shared.ProcessMeta) {
+	pi.UserName = meta.UserName
+	pi.ExePath = meta.ExePath
+	pi.Company = meta.Company
+	pi.Integrity = meta.Integrity
+	pi.SessionID = meta.SessionID
+	pi.SessionName = meta.SessionName
+}
+
+func cacheMeta(pid int, pi *shared.ProcessInfo, now time.Time) {
+	shared.ProcMetaCache.Set(pid, shared.ProcessMeta{
+		UserName:    pi.UserName,
+		ExePath:     pi.ExePath,
+		Company:     pi.Company,
+		Integrity:   pi.Integrity,
+		SessionID:   pi.SessionID,
+		SessionName: pi.SessionName,
+		FetchedAt:   now,
+	})
+}
+
+func fillCompany(pi *shared.ProcessInfo) {
+	if pi.ExePath == "" {
+		return
+	}
+
+	company, err := queryCompanyName(pi.ExePath)
+	if err != nil || company == "" {
+		return
+	}
+	pi.Company = company
+}
+
+func queryCompanyName(path string) (string, error) {
+	pathPtr, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return "", err
+	}
+
+	var handle uint32
+	size, _, _ := shared.ProcGetFileVersionInfoSize.Call(
+		uintptr(unsafe.Pointer(pathPtr)),
+		uintptr(unsafe.Pointer(&handle)),
+	)
+	if size == 0 {
+		return "", fmt.Errorf("version info size is 0")
+	}
+
+	buf := make([]byte, int(size))
+	r1, _, _ := shared.ProcGetFileVersionInfo.Call(
+		uintptr(unsafe.Pointer(pathPtr)),
+		0,
+		uintptr(size),
+		uintptr(unsafe.Pointer(&buf[0])),
+	)
+	if r1 == 0 {
+		return "", fmt.Errorf("GetFileVersionInfo failed")
+	}
+
+	lang, codepage, err := queryVersionTranslation(buf)
+	if err != nil {
+		return "", err
+	}
+
+	query := fmt.Sprintf("\\StringFileInfo\\%04x%04x\\CompanyName", lang, codepage)
+	return queryVersionString(buf, query)
+}
+
+func queryVersionTranslation(buf []byte) (uint16, uint16, error) {
+	subBlock, err := windows.UTF16PtrFromString(`\VarFileInfo\Translation`)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var valuePtr uintptr
+	var valueLen uint32
+	r0, _, _ := shared.ProcVerQueryValue.Call(
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(subBlock)),
+		uintptr(unsafe.Pointer(&valuePtr)),
+		uintptr(unsafe.Pointer(&valueLen)),
+	)
+	if r0 == 0 || valueLen < 4 {
+		return 0, 0, fmt.Errorf("no translation")
+	}
+
+	lang := *(*uint16)(unsafe.Pointer(valuePtr))
+	codepage := *(*uint16)(unsafe.Pointer(valuePtr + unsafe.Sizeof(lang)))
+	return lang, codepage, nil
+}
+
+func queryVersionString(buf []byte, query string) (string, error) {
+	queryPtr, err := windows.UTF16PtrFromString(query)
+	if err != nil {
+		return "", err
+	}
+
+	var valuePtr uintptr
+	var valueLen uint32
+	r0, _, _ := shared.ProcVerQueryValue.Call(
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(queryPtr)),
+		uintptr(unsafe.Pointer(&valuePtr)),
+		uintptr(unsafe.Pointer(&valueLen)),
+	)
+	if r0 == 0 || valueLen == 0 {
+		return "", fmt.Errorf("no value")
+	}
+
+	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(valuePtr))), nil
 }
 
 func tokenIntegrity(token windows.Token) string {

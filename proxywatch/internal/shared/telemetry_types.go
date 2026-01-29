@@ -3,10 +3,11 @@ package shared
 import "time"
 
 type Snapshot struct {
-	Timestamp   time.Time
-	Processes   map[int]*ProcessInfo
-	Listeners   []ListenerInfo
-	Connections []ConnectionInfo
+	Timestamp    time.Time
+	Processes    map[int]*ProcessInfo
+	Listeners    []ListenerInfo
+	Connections  []ConnectionInfo
+	UDPListeners []UDPListenerInfo
 }
 
 type ListenerKey struct {
@@ -16,6 +17,13 @@ type ListenerKey struct {
 }
 
 const (
-	BurstSamples = 5
-	BurstSleep   = 40 * time.Millisecond
+	BurstSamplesMax = 5
+	BurstSamplesMid = 3
+	BurstSamplesMin = 1
+	BurstSleep      = 40 * time.Millisecond
+
+	BurstIdleConnThreshold     = 5
+	BurstModerateConnThreshold = 25
+
+	ProcessMetaCacheTTL = 60 * time.Second
 )

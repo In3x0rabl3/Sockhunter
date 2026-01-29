@@ -16,9 +16,13 @@ const (
 type AppState struct {
 	Screen tcell.Screen
 
-	LastError  string
-	LastUpdate time.Time
-	RefreshInt time.Duration
+	LastError           string
+	LastUpdate          time.Time
+	RefreshInt          time.Duration
+	ConfirmKill         bool
+	ConfirmKillTimeout  time.Duration
+	ConfirmKillPID      int
+	ConfirmKillDeadline time.Time
 
 	Candidates  []Candidate
 	Mode        AppMode
@@ -39,11 +43,12 @@ type IOSample struct {
 }
 
 type ScannerAdapter struct {
-	MinScore   int
-	RoleFilter map[string]bool
-	LastIO     map[int]IOSample
-	Collect    func() (*Snapshot, error)
-	Classify   func(*Snapshot, int, map[string]bool) []Candidate
+	Options  ClassifyOptions
+	Cache    ClassifierCache
+	LastIO   map[int]IOSample
+	Logger   *JSONLogger
+	Collect  func() (*Snapshot, error)
+	Classify ClassifyFunc
 }
 
 func (s *ScannerAdapter) Refresh(app *AppState) {
@@ -66,13 +71,20 @@ func (s *ScannerAdapter) Refresh(app *AppState) {
 		return
 	}
 
-	cands := s.Classify(snap, s.MinScore, s.RoleFilter)
+	cands := s.Classify(snap, s.Options, &s.Cache)
 	now := time.Now().UTC()
 	applyIORates(cands, now, &s.LastIO)
 
+	app.LastError = ""
+	if s.Logger != nil {
+		if err := s.Logger.WriteSnapshot(snap, cands); err != nil {
+			app.LastError = "log write failed: " + err.Error()
+		}
+	}
+
 	app.Candidates = cands
 	app.LastUpdate = now
-	app.LastError = ""
+	// app.LastError already set above
 
 	// maintain selection across refreshes
 	if len(app.Candidates) == 0 {
